@@ -21,9 +21,9 @@ docker compose up --build --wait
 |---|---|---|
 | `POST /notes` | Crea una nota | 201, 422, 429, 503 |
 | `GET /notes?limit=&offset=` | Lista notas (máximo 100 por página) | 200, 422, 429, 503 |
-| `GET /notes/{id}` | Lee una nota | 200, 404, 429, 503 |
+| `GET /notes/{id}` | Lee una nota | 200, 404, 422, 429, 503 |
 | `PUT /notes/{id}` | Reemplaza una nota | 200, 404, 422, 429, 503 |
-| `DELETE /notes/{id}` | Borra una nota | 204, 404, 429, 503 |
+| `DELETE /notes/{id}` | Borra una nota | 204, 404, 422, 429, 503 |
 | `GET /health` | Estado de PostgreSQL y Redis | 200, 503 |
 
 En las rutas de notas, 503 significa que PostgreSQL no responde.
@@ -108,7 +108,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | `python:3.13-slim`, una sola etapa | La misma versión que uso en local. No hay nada que compilar, así que no hacen falta más etapas. |
 | `psycopg[binary]` | Trae incluida la librería cliente de PostgreSQL, así que no se instala nada del sistema. |
 | Copiar `requirements.txt` antes que el código | Si solo cambió el código, Docker reutiliza la capa de dependencias y el build tarda segundos. |
-| El Dockerfile copia solo `app/` y `migrations/` | Nada más del repositorio, como un `.env`, puede terminar dentro de la imagen. El `.dockerignore` además evita enviar `.git` y `.env` al build. |
+| El Dockerfile copia solo `requirements.txt`, `app/` y `migrations/` | Nada más del repositorio, como un `.env`, puede terminar dentro de la imagen. El `.dockerignore` además evita enviar `.git` y `.env` al build. |
 | Versiones exactas de las dependencias directas en `requirements.txt` | Se sabe exactamente qué versión de cada paquete usa el código. Las dependencias de esas dependencias no están fijadas (ver [Qué faltó y cómo seguiría](#qué-faltó-y-cómo-seguiría)). |
 | Usuario sin privilegios de root | Si alguien explota la API, no es root dentro del contenedor. |
 
@@ -116,7 +116,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 
 | Decisión | Por qué |
 |---|---|
-| Tres variables: `DATABASE_URL`, `REDIS_URL` y `RATE_LIMIT_PER_MINUTE` | Es todo lo que cambia entre entornos. El código es el mismo en local y en producción. |
+| Tres variables de la aplicación: `DATABASE_URL`, `REDIS_URL` y `RATE_LIMIT_PER_MINUTE`; además, `WEB_CONCURRENCY`, que lee uvicorn | Es todo lo que cambia entre entornos. El código es el mismo en local y en producción. |
 | En local, valores de desarrollo escritos en `compose.yaml` | Son contraseñas desechables de desarrollo, no secretos. Así el entorno se levanta con un comando, sin copiar ningún `.env`. |
 | En producción, un `.env` en la VM con permisos 600; en el repo solo `.env.example` | Los secretos nunca tocan Git. En un GCP real los leería de Secret Manager con la cuenta de servicio de la VM ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 7). |
 | `sslmode=verify-full` y el certificado de la CA montado de solo lectura | Valida el certificado y el nombre del servidor, no solo que la conexión vaya cifrada ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 6). |
@@ -166,7 +166,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 
 | Decisión | Por qué |
 |---|---|
-| Un solo workflow con un solo job | En un PR construye la imagen, levanta el entorno y corre las pruebas. En `main`, además publica la imagen y despliega. Se lee de arriba abajo. |
+| Un solo workflow con un solo job | En un PR construye la imagen, levanta el entorno y corre las pruebas. En `main`, además publica la imagen y, si hay una VM configurada, despliega. Se lee de arriba abajo. |
 | Si algo falla, el job muestra los logs de los contenedores | Se ve por qué falló sin tener que reproducirlo en local ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 4). |
 | `compose.yaml` nombra la imagen `ghcr.io/gmzrmz/prueba-tecnica-kiggu:${TAG}` | CI construye, prueba y publica la misma imagen con `docker compose push`. |
 | Protección de la rama `main`: el job tiene que pasar antes de integrar un PR | Sin esto, CI avisa pero no impide el merge. Es una configuración del repositorio, no código. |
