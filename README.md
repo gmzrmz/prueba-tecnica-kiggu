@@ -129,7 +129,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Decisión | Por qué |
 |---|---|
 | pytest y httpx contra la API levantada | Las pruebas hacen peticiones HTTP reales, como un cliente, contra PostgreSQL y Redis reales. |
-| Las pruebas que alteran el entorno lo restauran con fixtures | La prueba del 503 apaga Redis y su fixture lo vuelve a encender al terminar, aunque la prueba falle. La prueba del 429 limpia los contadores al terminar. Así cada prueba funciona en cualquier orden. |
+| Las pruebas que alteran el entorno lo restauran con fixtures | Las pruebas que apagan Redis o PostgreSQL (con `docker compose stop`) los vuelven a levantar al terminar, aunque fallen. Antes de cada prueba se vacían los contadores del rate limit. Así cada prueba funciona en cualquier orden. |
 | La prueba del 429 hace peticiones hasta recibir un 429 | Tolera que el minuto cambie en medio de la prueba, así que no falla al azar. |
 
 ### Integración continua
