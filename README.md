@@ -6,14 +6,14 @@ La parte 1 de la prueba está en [CONOCIMIENTO.md](CONOCIMIENTO.md).
 
 ## Cómo levantar y probar
 
-Necesitas Docker con Compose v2. Para correr las pruebas, también Python 3.13.
+Necesitas Docker con el comando `docker compose`. Para correr las pruebas, también Python 3.13.
 
 ```bash
 # Levanta API, PostgreSQL y Redis. Devuelve el control cuando los tres están sanos.
 docker compose up --build --wait
 ```
 
-- API: http://127.0.0.1:8000
+- API: http://127.0.0.1:8000/notes
 - Swagger UI: http://127.0.0.1:8000/docs
 - Estado de las dependencias: http://127.0.0.1:8000/health
 
@@ -29,7 +29,9 @@ docker compose up --build --wait
 En las rutas de notas, 503 significa que PostgreSQL no responde.
 
 ```bash
-# Pruebas, con el entorno levantado
+# Pruebas, con el entorno levantado (en un entorno virtual de Python)
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest
 
@@ -137,6 +139,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Decisión | Por qué |
 |---|---|
 | Un solo workflow con un solo job | En un PR construye la imagen, levanta el entorno y corre las pruebas. En `main`, además publica la imagen y despliega. Se lee de arriba abajo. |
+| Si algo falla, el job muestra los logs de los contenedores | Se ve por qué falló sin tener que reproducirlo en local ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 4). |
 | `compose.yaml` nombra la imagen `ghcr.io/gmzrmz/prueba-tecnica-kiggu:${TAG}` | CI construye, prueba y publica la misma imagen con `docker compose push`. |
 | Protección de la rama `main`: el job tiene que pasar antes de integrar un PR | Sin esto, CI avisa pero no impide el merge. Es una configuración del repositorio, no código. |
 | Permisos del workflow: `contents: read` y `packages: write` | Tiene solo los permisos que necesita. |
@@ -188,7 +191,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 ## Herramientas
 
 - Python 3.13, FastAPI, uvicorn, psycopg 3, redis-py, pytest y httpx.
-- Docker y Docker Compose v2, con las imágenes oficiales de PostgreSQL y Redis.
+- Docker y Docker Compose, con las imágenes oficiales de PostgreSQL 17 y Redis 8.
 - GitHub Actions y GitHub Container Registry (GHCR).
 - Structurizr DSL para los diagramas C4.
 - Claude (Claude Code), DeepSeek y Grok como asistentes; ver [Uso de IA](#uso-de-ia).

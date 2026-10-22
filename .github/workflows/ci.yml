@@ -1,0 +1,45 @@
+# En cada PR: construye la imagen, levanta el entorno y corre las pruebas.
+# En main: además publica en GHCR exactamente la imagen que se probó.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Solo los permisos necesarios: leer el código y publicar la imagen.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.sha }} # la imagen se llama como el commit
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Construir y levantar el entorno
+        run: docker compose up --build --wait
+
+      - name: Correr las pruebas
+        run: |
+          pip install -r requirements-dev.txt
+          pytest
+
+      - name: Mostrar los logs si algo falló
+        if: failure()
+        run: docker compose logs
+
+      - name: Publicar la imagen en GHCR
+        if: github.ref == 'refs/heads/main'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker compose push api
