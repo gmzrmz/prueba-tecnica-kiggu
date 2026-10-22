@@ -71,6 +71,8 @@ Preparación, una sola vez:
 
 Desde ahí, cada merge a `main` que pase las pruebas se despliega solo. A mano: `./deploy.sh <SHA>` dentro de `~/notes`.
 
+Para ver el estado o los logs en la VM hay que indicar la versión, porque `compose.prod.yaml` exige `TAG` a propósito (así nunca se levanta una versión indefinida): `TAG=$(cat .deployed-tag) docker compose -f compose.prod.yaml ps` (o `logs`).
+
 ## Arquitectura
 
 Los diagramas C4 están en [docs/arquitectura/workspace.dsl](docs/arquitectura/workspace.dsl), escritos con Structurizr DSL. Para verlos, pega el archivo en [playground.structurizr.com](https://playground.structurizr.com) y navega entre niveles con doble clic. Son seis vistas: contexto, contenedores, componentes, despliegue local, despliegue en producción y una vista dinámica del despliegue con rollback.
