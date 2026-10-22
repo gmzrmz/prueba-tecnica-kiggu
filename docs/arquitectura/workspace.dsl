@@ -28,7 +28,7 @@ workspace "Notes API" "Prueba técnica DevOps: API de notas y su entorno de ejec
         # Relaciones, nivel 1: contexto
         cliente -> notes "Gestiona notas" "HTTP/JSON"
         dev -> github "Sube código y abre pull requests" "git"
-        github -> notes "En cada PR construye y prueba; en main publica la imagen y despliega" "GitHub Actions; SSH"
+        github -> notes "En cada PR construye y prueba; en main publica la imagen y, si hay una VM configurada, despliega" "GitHub Actions; SSH"
         notes -> awsService "Consume (no implementado)" "HTTPS :8091"
 
         # Relaciones, nivel 2: contenedores
@@ -116,7 +116,7 @@ workspace "Notes API" "Prueba técnica DevOps: API de notas y su entorno de ejec
         }
 
         dynamic notes "DespliegueRollback" "Cómo se despliega una versión y cómo se vuelve atrás si no queda sana." {
-            github -> api "Ejecuta deploy.sh por SSH: levanta la imagen nueva, identificada por el SHA del commit"
+            github -> api "Copia compose.prod.yaml y deploy.sh por SCP y ejecuta deploy.sh por SSH: levanta la imagen nueva, identificada por el SHA del commit"
             api -> db "Al arrancar, aplica las migraciones pendientes (expand-contract, compatibles con la versión anterior)"
             github -> api "docker compose up --wait: espera hasta 60 s a que el healthcheck (/health) quede sano"
             github -> api "Si no quedó sana: levanta la imagen anterior, espera que quede sana y termina en error"
