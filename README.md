@@ -19,12 +19,14 @@ docker compose up --build --wait
 
 | Método y ruta | Qué hace | Respuestas |
 |---|---|---|
-| `POST /notes` | Crea una nota | 201, 422, 429 |
-| `GET /notes?limit=&offset=` | Lista notas (máximo 100 por página) | 200, 422, 429 |
-| `GET /notes/{id}` | Lee una nota | 200, 404, 429 |
-| `PUT /notes/{id}` | Reemplaza una nota | 200, 404, 422, 429 |
-| `DELETE /notes/{id}` | Borra una nota | 204, 404, 429 |
+| `POST /notes` | Crea una nota | 201, 422, 429, 503 |
+| `GET /notes?limit=&offset=` | Lista notas (máximo 100 por página) | 200, 422, 429, 503 |
+| `GET /notes/{id}` | Lee una nota | 200, 404, 429, 503 |
+| `PUT /notes/{id}` | Reemplaza una nota | 200, 404, 422, 429, 503 |
+| `DELETE /notes/{id}` | Borra una nota | 204, 404, 429, 503 |
 | `GET /health` | Estado de PostgreSQL y Redis | 200, 503 |
+
+En las rutas de notas, 503 significa que PostgreSQL no responde.
 
 ```bash
 # Pruebas, con el entorno levantado
@@ -76,8 +78,8 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | `python:3.13-slim`, una sola etapa | La misma versión que uso en local. No hay nada que compilar, así que no hacen falta más etapas. |
 | `psycopg[binary]` | Trae incluida la librería cliente de PostgreSQL, así que no se instala nada del sistema. |
 | Copiar `requirements.txt` antes que el código | Si solo cambió el código, Docker reutiliza la capa de dependencias y el build tarda segundos. |
-| `.dockerignore` con `.git`, `.env`, `tests` y `docs` | Un `.env` nunca termina dentro de una imagen. |
-| Versiones exactas en `requirements.txt` | El build da lo mismo hoy y en un mes, y se sabe exactamente qué se instala. |
+| El Dockerfile copia solo `app/` y `migrations/` | Nada más del repositorio, como un `.env`, puede terminar dentro de la imagen. El `.dockerignore` además evita enviar `.git` y `.env` al build. |
+| Versiones exactas de las dependencias directas en `requirements.txt` | Se sabe exactamente qué versión de cada paquete usa el código. Las dependencias de esas dependencias no están fijadas (ver [Qué faltó y cómo seguiría](#qué-faltó-y-cómo-seguiría)). |
 | Usuario sin privilegios de root | Si alguien explota la API, no es root dentro del contenedor. |
 
 ### Configurar
@@ -93,8 +95,8 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 
 | Decisión | Por qué |
 |---|---|
-| Healthcheck de Docker en los tres servicios (`pg_isready`, `redis-cli ping` y `/health`) | Una sola definición de "sano", que usan compose, CI y el despliegue. |
-| La API espera a que PostgreSQL esté sano (`depends_on`) | No intenta migrar antes de tiempo. |
+| Healthcheck de Docker en los tres servicios: `/health` en el `Dockerfile` de la API; `pg_isready` y `redis-cli ping` en `compose.yaml` | Una sola definición de "sano", que usan compose, CI y el despliegue. Al estar en el `Dockerfile`, el de la API viaja con la imagen y vale igual en local y en producción. |
+| La API espera a que PostgreSQL y Redis estén sanos (`depends_on`) | No intenta migrar antes de tiempo, y al terminar `up --wait` todo está sano. |
 | Al arrancar, primero el script de migraciones y después `exec uvicorn` | Migra y después atiende. Con `exec`, uvicorn recibe la señal de apagado y se detiene limpio. |
 | Volumen con nombre para PostgreSQL en local | Los datos sobreviven a los reinicios; `docker compose down -v` empieza de cero. |
 | En producción, `restart: unless-stopped` | Si la VM se reinicia, los servicios vuelven solos. |
@@ -109,6 +111,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Rate limit con la clave `rl:<ip>:<minuto>`, `INCR` y `EXPIRE` en una transacción, y 429 al superar el límite | Cada minuto usa una clave nueva, así que el contador se reinicia solo. Aunque una expiración fallara, la IP no queda bloqueada. |
 | `/health` sin rate limit | El despliegue lo consulta varias veces seguidas, y un 429 provocaría un rollback por error. |
 | `/health` hace `SELECT 1` y `PING`, y responde 200 o 503 | Refleja el estado real de las dependencias. |
+| Si PostgreSQL no responde, las rutas de notas devuelven 503 "Base de datos no disponible" | Un error claro en vez de un 500 genérico. |
 | SQL con parámetros, longitudes máximas y un máximo de 100 notas por listado | Sin inyección SQL ni respuestas gigantes. |
 
 ### Exponer
@@ -174,6 +177,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 - **SSH sin el puerto 22 abierto:** desplegar a través de IAP de GCP.
 - **Secretos en Secret Manager**, en vez de un `.env` en la VM.
 - **Despliegue sin cortes:** dos instancias detrás de un balanceador, pasando el tráfico a la nueva solo cuando esté sana (blue-green).
+- **Lock file completo** de dependencias (por ejemplo con `pip-tools`), para que también las indirectas tengan versión fija y el build sea idéntico hoy y en un mes.
 - **Escaneo de vulnerabilidades** de la imagen en CI, por ejemplo con Trivy.
 - **Limpieza de imágenes viejas** en la VM, conservando la anterior para el rollback.
 - **Métricas y alertas** de CPU, RAM, disco y `/health`.

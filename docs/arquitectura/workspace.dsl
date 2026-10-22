@@ -11,7 +11,7 @@ workspace "Notes API" "Prueba técnica DevOps: API de notas y su entorno de ejec
         # Sistema
         notes = softwareSystem "Notes API" "Permite crear, listar, leer, actualizar y borrar notas." {
             api = container "API" "Expone el CRUD de notas, /health y /docs. Al arrancar aplica las migraciones pendientes. No guarda estado: la configuración llega por variables de entorno y los secretos de producción viven en la VM, nunca en Git." "Python, FastAPI, uvicorn" {
-                notesRouter = component "Rutas de notas" "Endpoints del CRUD. Valida la entrada con Pydantic y traduce errores a códigos HTTP coherentes (201, 404, 422)." "FastAPI APIRouter"
+                notesRouter = component "Rutas de notas" "Endpoints del CRUD. Valida la entrada con Pydantic y traduce errores a códigos HTTP coherentes (201, 404, 422, y 503 si PostgreSQL no responde)." "FastAPI APIRouter"
                 rateLimiter = component "Rate limiter" "Limita peticiones por IP con ventana fija y responde 429 al superar el límite. No se aplica a /health. Si Redis falla o tarda más de 1 s, deja pasar la petición." "Dependencia de FastAPI"
                 repo = component "Repositorio de notas" "Consultas SQL con parámetros sobre un pool de conexiones, con timeout de 2 s." "psycopg"
                 healthRouter = component "Ruta de salud" "Comprueba Postgres y Redis con timeouts cortos. Responde 200 si ambos están bien y 503 si alguno falla. Docker la usa como healthcheck." "FastAPI APIRouter"

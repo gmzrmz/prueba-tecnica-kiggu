@@ -1,0 +1,45 @@
+# Entorno local y de CI. Se levanta con: docker compose up --build --wait
+# Las contraseñas de este archivo son de desarrollo y desechables. Las de producción nunca están en el repositorio.
+
+services:
+  api:
+    build: .
+    # El mismo nombre que se publica en GHCR: CI construye, prueba y sube exactamente esta imagen.
+    image: ghcr.io/gmzrmz/prueba-tecnica-kiggu:${TAG:-local}
+    environment:
+      DATABASE_URL: postgresql://notes:notes@postgres:5432/notes
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_PER_MINUTE: "100"
+    ports:
+      - "127.0.0.1:8000:8000" # solo accesible desde esta máquina
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # PostgreSQL y Redis no publican puertos: solo la API los ve, dentro de la red de Docker.
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notes -d notes"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
