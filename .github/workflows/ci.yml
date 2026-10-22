@@ -1,11 +1,16 @@
 # En cada PR: construye la imagen, levanta el entorno y corre las pruebas.
-# En main: además publica en GHCR exactamente la imagen que se probó.
+# En main: además publica en GHCR exactamente la imagen que se probó y, si hay una VM configurada, la despliega.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+
+# Dos despliegues a la vez se pisarían en la VM: en la misma rama, cada ejecución espera a que termine la anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 # Solo los permisos necesarios: leer el código y publicar la imagen.
 permissions:
@@ -43,3 +48,19 @@ jobs:
         run: |
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker compose push api
+
+      # Solo corre si la variable DEPLOY_ENABLED del repositorio es "true". Sin VM, el paso se salta.
+      - name: Desplegar en la VM
+        if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }} # usuario@ip de la VM
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }} # llave privada para entrar por SSH
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }} # host key fijada: evita un man-in-the-middle
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          scp compose.prod.yaml deploy.sh "$VM_HOST:notes/"
+          # shellcheck disable=SC2029 # $TAG se expande aquí, en el runner, a propósito: es el SHA a desplegar
+          ssh "$VM_HOST" "cd notes && bash deploy.sh" "$TAG"

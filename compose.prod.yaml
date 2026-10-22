@@ -1,0 +1,35 @@
+# Producción: la VM de GCP. PostgreSQL es un servicio gestionado externo, así que no está aquí.
+# Los secretos vienen del archivo .env de la VM (ver .env.example), que nunca está en el repositorio.
+# Lo usa deploy.sh, que define TAG con la versión a desplegar.
+
+services:
+  api:
+    image: ghcr.io/gmzrmz/prueba-tecnica-kiggu:${TAG:?Falta TAG}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL en .env}
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-100}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1} # procesos de uvicorn en esta VM
+    volumes:
+      - ./certs/ca.pem:/certs/ca.pem:ro # CA del PostgreSQL gestionado, para verify-full
+    ports:
+      - "80:8000" # lo único público de la VM
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped # si la VM se reinicia, vuelve sola
+    logging: &logs # rotación: los logs no pueden llenar el disco
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # Sin puerto publicado: solo la API lo ve.
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+    logging: *logs

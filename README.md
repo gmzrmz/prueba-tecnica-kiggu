@@ -41,7 +41,35 @@ docker compose down -v
 
 No hay pasos manuales: la API crea el esquema de la base de datos al arrancar.
 
-**Simular un despliegue con rollback, sin VM:** `deploy.sh` usa el archivo de compose que indique `COMPOSE_FILE` (por defecto `compose.prod.yaml`). En local se apunta a `compose.yaml`: primero se despliega una versión sana y después una rota a propósito (con `/health` respondiendo 503). El script detecta que la nueva no quedó sana, vuelve a levantar la anterior y termina en error.
+### Simular un despliegue con rollback, sin VM
+
+`deploy.sh` usa el archivo de compose que indique `COMPOSE_FILE` (por defecto `compose.prod.yaml`). En local se apunta a `compose.yaml`:
+
+```bash
+export COMPOSE_FILE=compose.yaml
+IMG=ghcr.io/gmzrmz/prueba-tecnica-kiggu
+
+# 1. Una versión sana: se despliega y queda activa
+TAG=v1 docker compose build api
+./deploy.sh v1
+
+# 2. Una versión rota a propósito: arranca, pero /health nunca responde
+printf 'FROM %s:v1\nCMD ["sleep", "infinity"]\n' $IMG | docker build -t $IMG:roto -
+./deploy.sh roto   # el healthcheck la marca unhealthy, vuelve a v1 y termina en error
+
+# 3. Limpiar
+docker compose down -v
+unset COMPOSE_FILE
+```
+
+### Desplegar en una VM
+
+Preparación, una sola vez:
+
+1. En la VM: Docker instalado, una carpeta `~/notes` con el `.env` (a partir de `.env.example`, con permisos 600) y el certificado de la CA del PostgreSQL gestionado en `~/notes/certs/ca.pem`.
+2. En GitHub, en los secretos del repositorio: `VM_HOST` (`usuario@ip`), `VM_SSH_KEY` (la llave privada) y `VM_KNOWN_HOSTS` (la salida de `ssh-keyscan <ip>`). En las variables: `DEPLOY_ENABLED=true`.
+
+Desde ahí, cada merge a `main` que pase las pruebas se despliega solo. A mano: `./deploy.sh <SHA>` dentro de `~/notes`.
 
 ## Arquitectura
 
@@ -98,7 +126,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Decisión | Por qué |
 |---|---|
 | Healthcheck de Docker en los tres servicios: `/health` en el `Dockerfile` de la API; `pg_isready` y `redis-cli ping` en `compose.yaml` | Una sola definición de "sano", que usan compose, CI y el despliegue. Al estar en el `Dockerfile`, el de la API viaja con la imagen y vale igual en local y en producción. |
-| La API espera a que PostgreSQL y Redis estén sanos (`depends_on`) | No intenta migrar antes de tiempo, y al terminar `up --wait` todo está sano. |
+| La API espera a que sus dependencias estén sanas (`depends_on`): PostgreSQL y Redis en local; solo Redis en producción | No intenta migrar antes de tiempo. En producción, PostgreSQL es externo: si no responde al arrancar, la migración falla, el contenedor termina y `restart: unless-stopped` lo vuelve a intentar hasta que responda. |
 | Al arrancar, primero el script de migraciones y después `exec uvicorn` | Migra y después atiende. Con `exec`, uvicorn recibe la señal de apagado y se detiene limpio. |
 | Volumen con nombre para PostgreSQL en local | Los datos sobreviven a los reinicios; `docker compose down -v` empieza de cero. |
 | En producción, `restart: unless-stopped` | Si la VM se reinicia, los servicios vuelven solos. |
@@ -150,10 +178,11 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Decisión | Por qué |
 |---|---|
 | El job copia `compose.prod.yaml` y `deploy.sh` por `scp` y ejecuta `deploy.sh <SHA>` por `ssh` | La VM no necesita git ni el repositorio. |
-| La host key de la VM está fijada en un secreto | Evita un ataque man-in-the-middle; es la misma idea que `verify-full`. |
+| La host key de la VM está fijada en un secreto (`VM_KNOWN_HOSTS`) | Evita un ataque man-in-the-middle; es la misma idea que `verify-full`. |
+| Las ejecuciones de CI en `main` van de una en una (`concurrency`) | Si se integran dos PRs seguidos, sus despliegues no se pisan en la VM. |
 | El despliegue solo corre si `vars.DEPLOY_ENABLED` es `true` | Sin una VM configurada, el paso se salta. |
 | `deploy.sh` usa el compose de `COMPOSE_FILE`, por defecto `compose.prod.yaml` | El mismo script se puede probar en local, sin VM. |
-| `deploy.sh` usa `docker compose up --wait` | Levanta la versión nueva y espera hasta 60 s a que el healthcheck diga que está sana. Si no lo está, vuelve a levantar la versión anterior. Son unas 10 líneas. |
+| `deploy.sh` usa `docker compose up --wait` | Levanta la versión nueva y espera hasta 60 s a que el healthcheck diga que está sana. Si no lo está, vuelve a levantar la versión anterior, que anota en el archivo `.deployed-tag`. Son unas 15 líneas. |
 | Si hubo rollback, el job termina en error | El rollback protege el servicio, pero CI queda en rojo para que el fallo no pase inadvertido. |
 | Migraciones expand-contract | El rollback devuelve la imagen anterior, pero no deshace el esquema. Por eso cada migración tiene que ser compatible con la versión anterior ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 5). |
 | Corte de unos segundos al reemplazar el contenedor | Evitarlo requiere un balanceador (ver [Qué faltó y cómo seguiría](#qué-faltó-y-cómo-seguiría)). |
@@ -163,7 +192,7 @@ Diseñé con cinco criterios: que sea fácil de entender, fácil de explicar, es
 | Decisión | Por qué |
 |---|---|
 | La API no guarda estado | Los datos están en PostgreSQL y los contadores en Redis, así que se pueden correr varias instancias sin cambiar código. |
-| `WEB_CONCURRENCY` | uvicorn lo lee solo: más procesos por VM cambiando solo la configuración. |
+| `WEB_CONCURRENCY` en el `.env` de la VM | uvicorn lo lee solo: más procesos por VM cambiando solo la configuración. |
 | Más VMs detrás de un balanceador | Las conexiones a PostgreSQL son instancias × procesos × 5, y deben quedar por debajo del límite del servicio gestionado. |
 | Con varias VMs, Redis tiene que ser compartido | Si cada VM tuviera su propio Redis, cada una contaría por separado ([CONOCIMIENTO.md](CONOCIMIENTO.md), pregunta 2). |
 
