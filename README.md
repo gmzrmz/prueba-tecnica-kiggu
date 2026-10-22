@@ -234,8 +234,12 @@ Para la parte 1, ver la sección "Uso de IA" de [CONOCIMIENTO.md](CONOCIMIENTO.m
 - **Qué generó la IA:**
   - Los diagramas C4 en Structurizr DSL (Claude).
   - El registro de decisiones de este README: Claude propuso alternativas y redactó las justificaciones a lo largo de varias iteraciones.
+  - El código, a partir de la arquitectura acordada (Claude): la API (`app/`), la migración, las pruebas (`tests/`), el `Dockerfile`, los dos archivos de compose, el workflow de CI, `deploy.sh` y `.env.example`.
   - Revisiones críticas del diseño (DeepSeek y Grok).
-- **Qué hice yo:**
-  - Definí el enfoque (C4, de lo general a lo detallado) y los criterios del diseño: fácil de entender y de explicar, escalable, seguro, rápido, y cumplir lo pedido sin agregar más.
-  - Dirigí las iteraciones, contrasté el diseño entre los tres asistentes y aprobé las decisiones finales.
+- **Qué hice yo:** dirigí cómo se hizo todo, en especial la arquitectura, y Claude lo implementó.
+  - Definí el enfoque: primero la arquitectura en C4, de lo general a lo detallado, y después el código, pieza por pieza y en orden de prioridad.
+  - Fijé los criterios que debía cumplir cada decisión (fácil de entender y de explicar, escalable, seguro, rápido, y lo pedido sin agregar más), cuestioné las propuestas que no los cumplían y pedí simplificarlas.
+  - Contrasté la arquitectura entre los tres asistentes en varias rondas y tomé la decisión final en cada punto.
+  - Probé personalmente el sistema en cada iteración y revisé cada entrega contra el README, el DSL y el enunciado antes de integrarla. Esas revisiones encontraron problemas reales que se corrigieron: un timeout de las migraciones distinto del documentado, una variable (`WEB_CONCURRENCY`) que no llegaba al contenedor en producción, y dos despliegues seguidos que se podían pisar en la VM.
+  - Configuré GitHub para que ningún cambio llegue a `main` sin pasar el CI, e integré los cambios por pull request.
 - **Un error que introdujo la IA:** el primer diseño del rate limiter usaba `INCR` y `EXPIRE` sin garantizar que se ejecutaran juntos. Si la API se caía entre los dos comandos, el contador quedaba sin expiración y esa IP quedaba bloqueada para siempre. Lo detectó una de las revisiones externas, y se corrigió con una clave por IP y por minuto y enviando los dos comandos en una transacción.
